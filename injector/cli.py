@@ -12,7 +12,9 @@ from .detection import detect
 from .reporting import write_report
 from .target import OpenAICompatibleTarget, TargetError
 
-app = typer.Typer(help="Evaluate prompt-injection indicators against an authorized LLM endpoint.")
+# Locals are never rendered in tracebacks: request frames hold the Authorization header.
+app = typer.Typer(help="Evaluate prompt-injection indicators against an authorized LLM endpoint.",
+                  pretty_exceptions_show_locals=False)
 CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 
 
@@ -20,7 +22,7 @@ CASES = Path(__file__).resolve().parent / "cases" / "default.yaml"
 def list_cases():
     """List the built-in test cases."""
     for case in load_cases(CASES):
-        typer.echo(f"{case.id:24} {case.severity:8} {case.category} — {case.description}")
+        typer.echo(f"{case.id:24} {case.severity:8} {case.category} - {case.description}")
 
 
 @app.command()
@@ -33,9 +35,8 @@ def scan(output: Path = typer.Option(Path("reports"), "--output", help="Report o
         results = []
         for case in load_cases(cases_file):
             started = datetime.now(timezone.utc).isoformat()
-            prompt = case.test_input.replace("{{CANARY}}", "INJECTOR-DEMO-CANARY-7F3A")
             try:
-                result = detect(case, target.ask(prompt))
+                result = detect(case, target.ask(case.test_input))
             except TargetError as exc:
                 result = {"outcome": "error", "evidence": [str(exc)]}
             results.append({"test_id": case.id, "category": case.category,
@@ -51,9 +52,11 @@ def report(path: Path = typer.Argument(..., exists=True, readable=True)):
     """View a previously generated JSON report summary."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        typer.echo(json.dumps(data.get("statistics", {}), indent=2))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         raise typer.BadParameter(f"Could not read report: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("statistics"), dict):
+        raise typer.BadParameter("Not an Injector report: missing 'statistics' object.")
+    typer.echo(json.dumps(data["statistics"], indent=2))
 
 
 @app.command()
@@ -65,7 +68,10 @@ def demo(mode: str = typer.Option("vulnerable", help="vulnerable or safe"),
     if host not in {"127.0.0.1", "localhost", "::1"}:
         raise typer.BadParameter("Demo may bind only to loopback.")
     from .demo import serve
-    serve(host, port, mode)
+    try:
+        serve(host, port, mode)
+    except OSError as exc:
+        raise typer.BadParameter(f"Could not start demo on {host}:{port}: {exc}") from exc
 
 
 if __name__ == "__main__":

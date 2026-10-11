@@ -2,27 +2,40 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CANARY = "INJECTOR-DEMO-CANARY-7F3A"
 
 
-def serve(host: str, port: int, mode: str) -> None:
+class _Server(HTTPServer):
+    # On Windows SO_REUSEADDR lets a second process bind a port that is already in use.
+    allow_reuse_address = os.name != "nt"
+
+
+class _IPv6Server(_Server):
+    address_family = socket.AF_INET6
+
+
+def make_server(host: str, port: int, mode: str) -> HTTPServer:
     class Handler(BaseHTTPRequestHandler):
+        timeout = 10  # a stalled client must not block the single-threaded server forever
+
         def do_POST(self):
             if self.path != "/v1/chat/completions":
                 self.send_error(404)
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if length > 64_000:
+                if not 0 <= length <= 64_000:
                     self.send_error(413)
                     return
                 request = json.loads(self.rfile.read(length))
                 prompt = request["messages"][-1]["content"]
                 if not isinstance(prompt, str):
                     raise ValueError
-            except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            except (ValueError, KeyError, IndexError, TypeError):
                 self.send_error(400)
                 return
             if mode == "safe":
@@ -41,8 +54,13 @@ def serve(host: str, port: int, mode: str) -> None:
         def log_message(self, *_args):
             pass
 
-    server = HTTPServer((host, port), Handler)
-    print(f"Intentionally {mode} demo listening on http://{host}:{port}/v1/chat/completions")
+    return (_IPv6Server if ":" in host else _Server)((host, port), Handler)
+
+
+def serve(host: str, port: int, mode: str) -> None:
+    server = make_server(host, port, mode)
+    shown = f"[{host}]" if ":" in host else host
+    print(f"Intentionally {mode} demo listening on http://{shown}:{port}/v1/chat/completions")
     print("Synthetic data only. Ctrl+C to stop.")
     try:
         server.serve_forever()

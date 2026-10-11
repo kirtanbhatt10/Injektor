@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -23,7 +24,13 @@ class TargetConfig:
         model = os.getenv("INJECTOR_MODEL", "").strip()
         if not endpoint or not model:
             raise ValueError("Set INJECTOR_ENDPOINT and INJECTOR_MODEL explicitly.")
-        parsed = urlsplit(endpoint)
+        if any(ch.isspace() or not ch.isprintable() for ch in endpoint):
+            raise ValueError("INJECTOR_ENDPOINT must not contain whitespace or control characters.")
+        try:
+            parsed = urlsplit(endpoint)
+            parsed.port  # accessing the property validates it
+        except ValueError as exc:
+            raise ValueError("INJECTOR_ENDPOINT is not a valid URL.") from exc
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("INJECTOR_ENDPOINT must be an absolute http(s) URL.")
         if parsed.username or parsed.password or parsed.fragment:
@@ -76,7 +83,21 @@ def load_cases(path: str | Path) -> list[AttackCase]:
         if item["severity"] not in {"low", "medium", "high", "critical"}:
             raise ValueError(f"Invalid severity in case {item['id']}.")
         seen.add(item["id"])
+        canaries = _string_list(item, "canaries")
+        indicators = _string_list(item, "indicators")
+        for pattern in indicators:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid indicator regex in case {item['id']}: {exc}") from exc
         cases.append(AttackCase(**{k: item[k] for k in required},
-                              canaries=tuple(item.get("canaries", [])),
-                              indicators=tuple(item.get("indicators", []))))
+                              canaries=canaries, indicators=indicators))
     return cases
+
+
+def _string_list(item: dict, key: str) -> tuple[str, ...]:
+    """A bare string would be split into characters, and '' matches every response."""
+    value = item.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(x, str) and x.strip() for x in value):
+        raise ValueError(f"'{key}' in case {item['id']} must be a list of non-empty strings.")
+    return tuple(value)
