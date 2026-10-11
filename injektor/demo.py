@@ -6,7 +6,7 @@ import os
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-CANARY = "INJECTOR-DEMO-CANARY-7F3A"
+CANARY = "INJEKTOR-DEMO-CANARY-7F3A"
 
 
 class _Server(HTTPServer):
@@ -22,15 +22,32 @@ def make_server(host: str, port: int, mode: str) -> HTTPServer:
     class Handler(BaseHTTPRequestHandler):
         timeout = 10  # a stalled client must not block the single-threaded server forever
 
+        def _reject(self, status: int, unread: int) -> None:
+            # Closing a socket with unread data resets the connection on Windows, and the
+            # client then loses the error response. Drain a bounded amount first.
+            remaining = min(unread, 1_000_000)
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 65_536))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            self.send_error(status)
+
         def do_POST(self):
-            if self.path != "/v1/chat/completions":
-                self.send_error(404)
-                return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 <= length <= 64_000:
-                    self.send_error(413)
-                    return
+            except ValueError:
+                length = -1
+            if length < 0:
+                self.send_error(400)
+                return
+            if self.path != "/v1/chat/completions":
+                self._reject(404, length)
+                return
+            if length > 64_000:
+                self._reject(413, length)
+                return
+            try:
                 request = json.loads(self.rfile.read(length))
                 prompt = request["messages"][-1]["content"]
                 if not isinstance(prompt, str):

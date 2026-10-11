@@ -3,8 +3,8 @@ import json
 import httpx
 import pytest
 
-from injector.config import TargetConfig
-from injector.target import OpenAICompatibleTarget, TargetError
+from injektor.config import TargetConfig
+from injektor.target import OpenAICompatibleTarget, TargetError
 
 
 def test_mocked_endpoint_roundtrip():
@@ -27,10 +27,10 @@ def _target(handler, **overrides):
 
 @pytest.fixture(autouse=True)
 def _no_backoff(monkeypatch):
-    import injector.target as target_module
+    import injektor.target as target_module
 
     monkeypatch.setattr(target_module.time, "sleep", lambda _s: None)
-    monkeypatch.delenv("INJECTOR_API_KEY", raising=False)
+    monkeypatch.delenv("INJEKTOR_API_KEY", raising=False)
 
 
 @pytest.mark.parametrize("exc", [httpx.RemoteProtocolError("boom"), httpx.DecodingError("boom"),
@@ -70,7 +70,7 @@ def test_redirects_are_not_followed():
 
 
 def test_slow_drip_body_hits_total_deadline(monkeypatch):
-    import injector.target as target_module
+    import injektor.target as target_module
 
     clock = iter(range(0, 100_000, 4))  # every clock read advances four seconds
     monkeypatch.setattr(target_module.time, "monotonic", lambda: next(clock))
@@ -85,7 +85,7 @@ def test_slow_drip_body_hits_total_deadline(monkeypatch):
 
 @pytest.mark.parametrize("key", ["FAKE-KEY\r\nX-Injected: 1", "FAKE-KEY-é"])
 def test_unusable_api_key_is_rejected_without_echoing_it(monkeypatch, key):
-    monkeypatch.setenv("INJECTOR_API_KEY", key)
+    monkeypatch.setenv("INJEKTOR_API_KEY", key)
     sent = []
 
     def handler(request):
@@ -99,7 +99,7 @@ def test_unusable_api_key_is_rejected_without_echoing_it(monkeypatch, key):
 
 
 def test_api_key_is_sent_as_bearer_token(monkeypatch):
-    monkeypatch.setenv("INJECTOR_API_KEY", "FAKE-KEY-123")
+    monkeypatch.setenv("INJEKTOR_API_KEY", "FAKE-KEY-123")
     seen = {}
 
     def handler(request):

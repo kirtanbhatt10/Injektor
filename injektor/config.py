@@ -14,39 +14,39 @@ import yaml
 class TargetConfig:
     endpoint: str
     model: str
-    api_key_env: str = "INJECTOR_API_KEY"
+    api_key_env: str = "INJEKTOR_API_KEY"
     timeout: float = 15.0
     retries: int = 1
 
     @classmethod
     def from_env(cls) -> "TargetConfig":
-        endpoint = os.getenv("INJECTOR_ENDPOINT", "").strip()
-        model = os.getenv("INJECTOR_MODEL", "").strip()
+        endpoint = os.getenv("INJEKTOR_ENDPOINT", "").strip()
+        model = os.getenv("INJEKTOR_MODEL", "").strip()
         if not endpoint or not model:
-            raise ValueError("Set INJECTOR_ENDPOINT and INJECTOR_MODEL explicitly.")
+            raise ValueError("Set INJEKTOR_ENDPOINT and INJEKTOR_MODEL explicitly.")
         if any(ch.isspace() or not ch.isprintable() for ch in endpoint):
-            raise ValueError("INJECTOR_ENDPOINT must not contain whitespace or control characters.")
+            raise ValueError("INJEKTOR_ENDPOINT must not contain whitespace or control characters.")
         try:
             parsed = urlsplit(endpoint)
             parsed.port  # accessing the property validates it
         except ValueError as exc:
-            raise ValueError("INJECTOR_ENDPOINT is not a valid URL.") from exc
+            raise ValueError("INJEKTOR_ENDPOINT is not a valid URL.") from exc
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError("INJECTOR_ENDPOINT must be an absolute http(s) URL.")
+            raise ValueError("INJEKTOR_ENDPOINT must be an absolute http(s) URL.")
         if parsed.username or parsed.password or parsed.fragment:
             raise ValueError("Endpoint URL must not contain credentials or a fragment.")
         if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
             raise ValueError("Non-local endpoints must use HTTPS.")
         try:
-            timeout = float(os.getenv("INJECTOR_TIMEOUT", "15"))
-            retries = int(os.getenv("INJECTOR_RETRIES", "1"))
+            timeout = float(os.getenv("INJEKTOR_TIMEOUT", "15"))
+            retries = int(os.getenv("INJEKTOR_RETRIES", "1"))
         except ValueError as exc:
-            raise ValueError("INJECTOR_TIMEOUT and INJECTOR_RETRIES must be numeric.") from exc
+            raise ValueError("INJEKTOR_TIMEOUT and INJEKTOR_RETRIES must be numeric.") from exc
         if not 0.1 <= timeout <= 120:
-            raise ValueError("INJECTOR_TIMEOUT must be between 0.1 and 120 seconds.")
+            raise ValueError("INJEKTOR_TIMEOUT must be between 0.1 and 120 seconds.")
         if not 0 <= retries <= 3:
-            raise ValueError("INJECTOR_RETRIES must be between 0 and 3.")
-        return cls(endpoint, model, os.getenv("INJECTOR_API_KEY_ENV", "INJECTOR_API_KEY"), timeout, retries)
+            raise ValueError("INJEKTOR_RETRIES must be between 0 and 3.")
+        return cls(endpoint, model, os.getenv("INJEKTOR_API_KEY_ENV", "INJEKTOR_API_KEY"), timeout, retries)
 
     def credential(self) -> str | None:
         return os.getenv(self.api_key_env)

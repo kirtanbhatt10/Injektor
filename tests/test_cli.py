@@ -4,8 +4,8 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-import injector.cli as cli
-from injector.cli import app
+import injektor.cli as cli
+from injektor.cli import app
 
 CASE = ("- id: a\n  category: c\n  description: d\n  test_input: t\n"
         "  expected_safe_behavior: e\n  severity: high\n")
@@ -30,12 +30,12 @@ def test_scan_records_transport_failure_without_leaking_the_key(tmp_path, monkey
     real = cli.OpenAICompatibleTarget
     monkeypatch.setattr(cli, "OpenAICompatibleTarget",
                         lambda cfg: real(cfg, transport=httpx.MockTransport(handler)))
-    monkeypatch.setenv("INJECTOR_ENDPOINT", "http://127.0.0.1:8765/v1/chat/completions")
-    monkeypatch.setenv("INJECTOR_MODEL", "mock")
-    monkeypatch.setenv("INJECTOR_RETRIES", "0")
-    monkeypatch.setenv("INJECTOR_API_KEY", "FAKE-SECRET-KEY-123")
+    monkeypatch.setenv("INJEKTOR_ENDPOINT", "http://127.0.0.1:8765/v1/chat/completions")
+    monkeypatch.setenv("INJEKTOR_MODEL", "mock")
+    monkeypatch.setenv("INJEKTOR_RETRIES", "0")
+    monkeypatch.setenv("INJEKTOR_API_KEY", "FAKE-SECRET-KEY-123")
     result = CliRunner().invoke(app, ["scan", "--output", str(tmp_path)])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 3, result.output  # every case failed: operational error
     assert "FAKE-SECRET-KEY-123" not in result.output
     for name in ("report.json", "report.html"):
         assert "FAKE-SECRET-KEY-123" not in (tmp_path / name).read_text(encoding="utf-8")
@@ -46,8 +46,8 @@ def test_scan_records_transport_failure_without_leaking_the_key(tmp_path, monkey
 def test_scan_rejects_case_file_with_invalid_regex(tmp_path, monkeypatch):
     cases = tmp_path / "cases.yaml"
     cases.write_text(CASE + "  indicators: ['(x']\n", encoding="utf-8")
-    monkeypatch.setenv("INJECTOR_ENDPOINT", "http://127.0.0.1:8765/v1/chat/completions")
-    monkeypatch.setenv("INJECTOR_MODEL", "mock")
+    monkeypatch.setenv("INJEKTOR_ENDPOINT", "http://127.0.0.1:8765/v1/chat/completions")
+    monkeypatch.setenv("INJEKTOR_MODEL", "mock")
     out = tmp_path / "out"
     result = CliRunner().invoke(app, ["scan", "--cases", str(cases), "--output", str(out)])
     assert result.exit_code == 2

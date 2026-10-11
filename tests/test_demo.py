@@ -6,8 +6,8 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from injector.cli import app
-from injector.demo import make_server
+from injektor.cli import app
+from injektor.demo import make_server
 
 
 @pytest.fixture
@@ -30,30 +30,30 @@ def demo():
         server.server_close()
 
 
-def scan(url, tmp_path, monkeypatch):
-    monkeypatch.setenv("INJECTOR_ENDPOINT", url)
-    monkeypatch.setenv("INJECTOR_MODEL", "injector-demo")
-    monkeypatch.delenv("INJECTOR_API_KEY", raising=False)
+def scan(url, tmp_path, monkeypatch, expected_exit):
+    monkeypatch.setenv("INJEKTOR_ENDPOINT", url)
+    monkeypatch.setenv("INJEKTOR_MODEL", "injektor-demo")
+    monkeypatch.delenv("INJEKTOR_API_KEY", raising=False)
     result = CliRunner().invoke(app, ["scan", "--output", str(tmp_path)])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == expected_exit, result.output
     return json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
 
 
 def test_vulnerable_demo_confirms_every_case(demo, tmp_path, monkeypatch):
-    report = scan(demo("vulnerable"), tmp_path, monkeypatch)
+    report = scan(demo("vulnerable"), tmp_path, monkeypatch, expected_exit=1)
     assert report["statistics"]["outcomes"] == {
         "confirmed": 4, "potential": 0, "inconclusive": 0, "error": 0}
 
 
 def test_safe_demo_raises_no_findings(demo, tmp_path, monkeypatch):
-    report = scan(demo("safe"), tmp_path, monkeypatch)
+    report = scan(demo("safe"), tmp_path, monkeypatch, expected_exit=0)
     assert report["statistics"]["outcomes"] == {
         "confirmed": 0, "potential": 0, "inconclusive": 4, "error": 0}
     assert report["statistics"]["indicator_score"] == 0
 
 
 def test_demo_serves_ipv6_loopback(demo, tmp_path, monkeypatch):
-    report = scan(demo("vulnerable", host="::1"), tmp_path, monkeypatch)
+    report = scan(demo("vulnerable", host="::1"), tmp_path, monkeypatch, expected_exit=1)
     assert report["statistics"]["outcomes"]["confirmed"] == 4
 
 

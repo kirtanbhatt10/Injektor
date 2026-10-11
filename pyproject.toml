@@ -3,7 +3,7 @@ requires = ["setuptools>=69,<82"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "injector"
+name = "injektor"
 version = "0.1.0"
 description = "A controlled prompt-injection security test harness for LLM applications"
 readme = "README.md"
@@ -15,10 +15,10 @@ dependencies = ["typer>=0.12,<1", "httpx>=0.27,<1", "PyYAML>=6.0,<7"]
 dev = ["pytest>=8,<9", "ruff>=0.6,<1"]
 
 [project.scripts]
-injector = "injector.cli:app"
+injektor = "injektor.cli:app"
 
 [tool.setuptools.packages.find]
-include = ["injector*"]
+include = ["injektor*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -31,4 +31,4 @@ line-length = 100
 select = ["E4", "E7", "E9", "F"]
 
 [tool.setuptools.package-data]
-injector = ["cases/*.yaml"]
+injektor = ["cases/*.yaml"]
