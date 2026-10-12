@@ -14,7 +14,7 @@ license = { file = "LICENSE" }
 dependencies = ["typer>=0.15.4,<1", "httpx>=0.27,<1", "PyYAML>=6.0,<7"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9", "ruff>=0.6,<1", "packaging>=23"]
+dev = ["pytest>=8,<10", "ruff>=0.6,<1", "packaging>=23"]
 
 [project.scripts]
 injektor = "injektor.cli:app"
