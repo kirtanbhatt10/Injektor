@@ -1,0 +1,36 @@
+name: New test case
+description: Propose a new prompt-injection case for the built-in suite.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cases are YAML entries in `injektor/cases/default.yaml`. See "Custom case files" in the README for the format and validation rules. Use only synthetic canaries and markers.
+  - type: input
+    id: category
+    attributes:
+      label: Category
+      placeholder: indirect-injection
+    validations:
+      required: true
+  - type: textarea
+    id: technique
+    attributes:
+      label: Technique
+      description: What attack does the case exercise, and why is it not covered by the existing cases?
+    validations:
+      required: true
+  - type: textarea
+    id: yaml
+    attributes:
+      label: Proposed case
+      description: The case as YAML. Canaries and markers must be at least 8 characters and must not appear in `test_input`.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: detection
+    attributes:
+      label: How a finding is detected
+      description: Which canary, marker or indicator shows that the model followed the injection?
+    validations:
+      required: true
