@@ -1,5 +1,7 @@
 """Bounded, predictable behavior towards the target, and errors that never become findings."""
 import json
+import time
+import types
 
 import httpx
 import pytest
@@ -23,6 +25,17 @@ def completion(text):
     return httpx.Response(200, json={"choices": [{"message": {"content": text}}]})
 
 
+def fake_time(sleep):
+    """A stand-in for the ``time`` module of one injektor module, with ``sleep`` replaced.
+
+    Patching ``time.sleep`` on the real module would also record sleeps from unrelated code,
+    such as ``subprocess`` polling while an indicator regex runs in its child interpreter."""
+    clock = types.SimpleNamespace(**{name: getattr(time, name) for name in dir(time)
+                                     if not name.startswith("_")})
+    clock.sleep = sleep
+    return clock
+
+
 def target(handler, **overrides):
     return OpenAICompatibleTarget(TargetConfig(URL, "mock", **overrides),
                                   transport=httpx.MockTransport(handler))
@@ -31,7 +44,7 @@ def target(handler, **overrides):
 @pytest.fixture(autouse=True)
 def _quiet(monkeypatch):
     sleeps = []
-    monkeypatch.setattr(target_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(target_module, "time", fake_time(sleeps.append))
     monkeypatch.delenv("INJEKTOR_API_KEY", raising=False)
     monkeypatch.delenv("INJEKTOR_DELAY", raising=False)
     return sleeps
@@ -326,7 +339,7 @@ def test_error_responses_mentioning_the_canary_are_errors_not_findings(tmp_path,
 
 def test_delay_is_applied_between_requests_only(tmp_path, run_scan, monkeypatch):
     pauses = []
-    monkeypatch.setattr(cli.time, "sleep", pauses.append)
+    monkeypatch.setattr(cli, "time", fake_time(pauses.append))
     result, requests = run_scan(lambda _n: completion("no"), "--output", str(tmp_path),
                                 env={"INJEKTOR_DELAY": "1.5"})
     assert result.exit_code == 0, result.output
