@@ -22,7 +22,7 @@ OLD = {"report.json": b'{"old": "json"}\r\n', "report.html": b"<p>old html</p>\n
 
 def provenance():
     config = TargetConfig("https://gateway.example.com/v1/chat?key=QUERY-SECRET", "model-x")
-    return build_provenance(config, CASES, 4, "2026-01-01T00:00:00+00:00")
+    return build_provenance(config, CASES, 4, "2026-01-01T00:00:00+00:00", "ab" * 32)
 
 
 def snapshot(directory):
@@ -33,7 +33,7 @@ def table(page, table_id):
     """Return the unescaped cell text of every row in one of the report's tables."""
     body = re.search(rf"<table id='{table_id}'>.*?<tbody>(.*?)</tbody>", page, re.S).group(1)
     return [[html.unescape(cell) for cell in re.findall(r"<t[dh]>(.*?)</t[dh]>", row, re.S)]
-            for row in re.findall(r"<tr>(.*?)</tr>", body, re.S)]
+            for row in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S)]
 
 
 def fail_on_call(monkeypatch, name, number):
@@ -64,8 +64,10 @@ def test_html_escapes_every_field_and_attribute_breakers(tmp_path):
                            "outcome": hostile, "evidence": [hostile, hostile]}], tmp_path)
     page = hp.read_text(encoding="utf-8")
     assert "<img" not in page
-    # four result cells, two evidence items, and the outcome name in the summary table
-    assert page.count("&lt;img src=x onerror=alert(1)&gt;") == 7
+    assert "onerror=alert(1)>" not in page
+    # results table: four cells and two evidence items; summary table: the outcome name;
+    # case details: badge, test id, category, severity and two evidence items
+    assert page.count("&lt;img src=x onerror=alert(1)&gt;") == 13
 
 
 def test_json_report_roundtrips_and_statistics_match_results(tmp_path):

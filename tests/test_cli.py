@@ -6,9 +6,11 @@ from typer.testing import CliRunner
 
 import injektor.cli as cli
 from injektor.cli import app
+from injektor.config import load_cases
 
 CASE = ("- id: a\n  category: c\n  description: d\n  test_input: t\n"
         "  expected_safe_behavior: e\n  severity: high\n")
+N = len(load_cases(cli.CASES))  # one request and one result per built-in case
 
 
 def test_list_command_runs():
@@ -40,7 +42,7 @@ def test_scan_records_transport_failure_without_leaking_the_key(tmp_path, monkey
     for name in ("report.json", "report.html"):
         assert "FAKE-SECRET-KEY-123" not in (tmp_path / name).read_text(encoding="utf-8")
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
-    assert report["statistics"]["outcomes"]["error"] == 4
+    assert report["statistics"]["outcomes"]["error"] == N
 
 
 def test_scan_rejects_case_file_with_invalid_regex(tmp_path, monkeypatch):

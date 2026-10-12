@@ -8,11 +8,13 @@ from typer.testing import CliRunner
 import injektor.cli as cli
 from injektor import __version__
 from injektor.cli import app
+from injektor.config import load_cases
 from injektor.target import OpenAICompatibleTarget
 
 CANARY = "INJEKTOR-DEMO-CANARY-7F3A"
 SECRET = "FAKE-SECRET-KEY-123"
 REFUSAL = "I cannot reveal hidden information."
+N = len(load_cases(cli.CASES))  # one request and one result per built-in case
 
 
 @pytest.fixture
@@ -50,7 +52,7 @@ def test_scan_writes_json_and_html(tmp_path, run_scan):
     result, _ = run_scan(REFUSAL, "--output", str(output))
     assert result.exit_code == 0, result.output
     report = load(output)
-    assert report["statistics"]["total"] == 4
+    assert report["statistics"]["total"] == N
     assert (output / "report.html").exists()
     shown = CliRunner().invoke(app, ["report", str(output / "report.json")])
     assert shown.exit_code == 0
@@ -62,10 +64,10 @@ def test_scan_writes_json_and_html(tmp_path, run_scan):
 def test_scan_exits_zero_without_findings(tmp_path, run_scan):
     result, requests = run_scan(REFUSAL, "--output", str(tmp_path))
     assert result.exit_code == 0, result.output
-    assert len(requests) == 4
-    assert "4 inconclusive" in result.output
+    assert len(requests) == N
+    assert f"{N} inconclusive" in result.output
     assert load(tmp_path)["statistics"]["outcomes"] == {
-        "confirmed": 0, "potential": 0, "inconclusive": 4, "error": 0}
+        "confirmed": 0, "potential": 0, "inconclusive": N, "error": 0}
 
 
 def test_scan_exits_zero_for_potential_only(tmp_path, run_scan):
@@ -79,13 +81,13 @@ def test_scan_exits_zero_for_potential_only(tmp_path, run_scan):
 def test_scan_exits_one_on_confirmed_finding(tmp_path, run_scan):
     result, _ = run_scan(f"The token is {CANARY}.", "--output", str(tmp_path))
     assert result.exit_code == 1, result.output
-    assert load(tmp_path)["statistics"]["outcomes"]["confirmed"] == 4
+    assert load(tmp_path)["statistics"]["outcomes"]["confirmed"] == N
 
 
 def test_scan_exits_three_on_operational_error(tmp_path, run_scan):
     result, _ = run_scan(httpx.ConnectError("refused"), "--output", str(tmp_path))
     assert result.exit_code == 3, result.output
-    assert load(tmp_path)["statistics"]["outcomes"]["error"] == 4
+    assert load(tmp_path)["statistics"]["outcomes"]["error"] == N
 
 
 def test_scan_exits_three_when_only_some_cases_error(tmp_path, run_scan):
@@ -93,7 +95,7 @@ def test_scan_exits_three_when_only_some_cases_error(tmp_path, run_scan):
                          "--output", str(tmp_path))
     assert result.exit_code == 3, result.output
     assert load(tmp_path)["statistics"]["outcomes"] == {
-        "confirmed": 0, "potential": 0, "inconclusive": 3, "error": 1}
+        "confirmed": 0, "potential": 0, "inconclusive": N - 1, "error": 1}
 
 
 def test_confirmed_finding_takes_precedence_over_errors(tmp_path, run_scan):
@@ -101,7 +103,7 @@ def test_confirmed_finding_takes_precedence_over_errors(tmp_path, run_scan):
                          "--output", str(tmp_path))
     assert result.exit_code == 1, result.output
     assert load(tmp_path)["statistics"]["outcomes"] == {
-        "confirmed": 3, "potential": 0, "inconclusive": 0, "error": 1}
+        "confirmed": N - 1, "potential": 0, "inconclusive": 0, "error": 1}
 
 
 def test_scan_exits_two_on_invalid_configuration(tmp_path, monkeypatch):
@@ -112,11 +114,71 @@ def test_scan_exits_two_on_invalid_configuration(tmp_path, monkeypatch):
     assert not (tmp_path / "report.json").exists()
 
 
-def test_scan_exits_three_when_report_cannot_be_written(tmp_path, run_scan):
-    blocker = tmp_path / "not-a-directory"
-    blocker.write_text("x", encoding="utf-8")
-    result, _ = run_scan(REFUSAL, "--output", str(blocker))
+def test_scan_exits_three_when_report_cannot_be_written(tmp_path, run_scan, monkeypatch):
+    """A failure that cannot be foreseen: the outcome counts are still printed."""
+    def fail(*_args, **_kwargs):
+        raise PermissionError("disk says no")
+
+    monkeypatch.setattr(cli, "write_report", fail)
+    result, requests = run_scan(REFUSAL, "--output", str(tmp_path / "out"))
     assert result.exit_code == 3, result.output
+    assert len(requests) == N
+    assert f"{N} cases: " in result.output and "Could not write report" in result.output
+
+
+@pytest.mark.parametrize("overwrite", [[], ["--overwrite"]], ids=["plain", "overwrite"])
+@pytest.mark.parametrize("below", ["", "reports", "a/b/reports"], ids=["is-file", "child", "deep"])
+def test_output_path_blocked_by_a_file_is_refused_before_contacting_the_target(
+        tmp_path, run_scan, below, overwrite):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("keep me", encoding="utf-8")
+    result, requests = run_scan(REFUSAL, "--output", str(blocker / below), *overwrite)
+    assert result.exit_code == 2, result.output
+    assert requests == []
+    assert "not a directory" in " ".join(result.output.split())
+    assert blocker.read_text(encoding="utf-8") == "keep me"
+
+
+def test_output_directory_that_does_not_exist_yet_is_created(tmp_path, run_scan):
+    output = tmp_path / "new" / "nested" / "reports"
+    result, requests = run_scan(REFUSAL, "--output", str(output))
+    assert result.exit_code == 0, result.output
+    assert len(requests) == N and (output / "report.json").exists()
+
+
+def test_report_hash_describes_the_case_file_that_was_loaded(tmp_path, run_scan):
+    """The file is replaced while the scan runs; the report must not claim the new content."""
+    cases = tmp_path / "cases.yaml"
+    loaded = cli.CASES.read_bytes()
+    cases.write_bytes(loaded)
+
+    def reply(number):
+        if number == 1:
+            cases.write_bytes(b"- replaced: after loading\n")
+        return REFUSAL
+
+    output = tmp_path / "out"
+    result, requests = run_scan(reply, "--cases", str(cases), "--output", str(output))
+    assert result.exit_code == 0, result.output
+    recorded = load(output)["provenance"]["cases"]
+    assert recorded == {"file": "cases.yaml", "count": N,
+                        "sha256": hashlib.sha256(loaded).hexdigest()}
+    assert recorded["sha256"] != hashlib.sha256(cases.read_bytes()).hexdigest()
+    assert len(requests) == N
+
+
+def test_case_file_deleted_during_the_scan_does_not_lose_the_report(tmp_path, run_scan):
+    cases = tmp_path / "cases.yaml"
+    cases.write_bytes(cli.CASES.read_bytes())
+
+    def reply(number):
+        if number == 1:
+            cases.unlink()
+        return REFUSAL
+
+    result, _ = run_scan(reply, "--cases", str(cases), "--output", str(tmp_path / "out"))
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "out" / "report.json").exists()
 
 
 def test_report_records_provenance(tmp_path, run_scan):
@@ -128,9 +190,10 @@ def test_report_records_provenance(tmp_path, run_scan):
         "endpoint": "http://127.0.0.1:8765/v1/chat/completions", "query_redacted": False,
         "model": "mock-model", "credential_supplied": False}
     assert provenance["cases"] == {
-        "file": "default.yaml", "count": 4,
+        "file": "default.yaml", "count": N,
         "sha256": hashlib.sha256(cli.CASES.read_bytes()).hexdigest()}
-    assert provenance["settings"] == {"timeout_seconds": 15.0, "retries": 0}
+    assert provenance["settings"] == {"timeout_seconds": 15.0, "retries": 0,
+                                      "delay_seconds": 0.0}
     assert provenance["started_at"] <= provenance["finished_at"]
     page = (tmp_path / "report.html").read_text(encoding="utf-8")
     assert "mock-model" in page and provenance["cases"]["sha256"] in page
@@ -165,7 +228,7 @@ def test_provenance_is_html_escaped(tmp_path):
 
     hostile = "<script>alert(1)</script>"
     config = TargetConfig("http://127.0.0.1:8765/v1", hostile)
-    provenance = build_provenance(config, cli.CASES, 4, "2026-01-01T00:00:00+00:00")
+    provenance = build_provenance(config, cli.CASES, 4, "2026-01-01T00:00:00+00:00", "ab" * 32)
     _, html_path = write_report([], tmp_path, provenance)
     page = html_path.read_text(encoding="utf-8")
     assert "<script>" not in page
@@ -203,8 +266,8 @@ def test_scan_exits_three_and_keeps_old_reports_when_publishing_fails(tmp_path, 
     args = ["--output", str(tmp_path)] + (["--overwrite"] if overwrite else [])
     result, requests = run_scan(f"leak {CANARY}", *args)
     assert result.exit_code == 3, result.output
-    assert len(requests) == 4
-    assert "4 confirmed" in result.output  # findings are still reported on the console
+    assert len(requests) == N
+    assert f"{N} confirmed" in result.output  # findings are still reported on the console
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == old
 
 
@@ -213,7 +276,7 @@ def test_scan_overwrites_only_when_asked(tmp_path, run_scan):
     assert first.exit_code == 0, first.output
     second, _ = run_scan(f"leak {CANARY}", "--output", str(tmp_path), "--overwrite")
     assert second.exit_code == 1, second.output
-    assert load(tmp_path)["statistics"]["outcomes"]["confirmed"] == 4
+    assert load(tmp_path)["statistics"]["outcomes"]["confirmed"] == N
     assert CANARY in (tmp_path / "report.html").read_text(encoding="utf-8")
 
 

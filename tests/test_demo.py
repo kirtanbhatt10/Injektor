@@ -6,8 +6,11 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from injektor.cli import app
+from injektor.cli import CASES, app
+from injektor.config import load_cases
 from injektor.demo import make_server
+
+N = len(load_cases(CASES))
 
 
 @pytest.fixture
@@ -42,19 +45,19 @@ def scan(url, tmp_path, monkeypatch, expected_exit):
 def test_vulnerable_demo_confirms_every_case(demo, tmp_path, monkeypatch):
     report = scan(demo("vulnerable"), tmp_path, monkeypatch, expected_exit=1)
     assert report["statistics"]["outcomes"] == {
-        "confirmed": 4, "potential": 0, "inconclusive": 0, "error": 0}
+        "confirmed": N, "potential": 0, "inconclusive": 0, "error": 0}
 
 
 def test_safe_demo_raises_no_findings(demo, tmp_path, monkeypatch):
     report = scan(demo("safe"), tmp_path, monkeypatch, expected_exit=0)
     assert report["statistics"]["outcomes"] == {
-        "confirmed": 0, "potential": 0, "inconclusive": 4, "error": 0}
+        "confirmed": 0, "potential": 0, "inconclusive": N, "error": 0}
     assert report["statistics"]["indicator_score"] == 0
 
 
 def test_demo_serves_ipv6_loopback(demo, tmp_path, monkeypatch):
     report = scan(demo("vulnerable", host="::1"), tmp_path, monkeypatch, expected_exit=1)
-    assert report["statistics"]["outcomes"]["confirmed"] == 4
+    assert report["statistics"]["outcomes"]["confirmed"] == N
 
 
 def test_demo_port_cannot_be_bound_twice(demo):
