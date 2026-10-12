@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-13
 
-The version number is unchanged at 0.1.0; choose the release version when publishing.
+First tagged release.
 
 ### Changes that can affect existing use
 
