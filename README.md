@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/social-preview.png" alt="Injektor: controlled prompt-injection and jailbreak checks for LLM apps" width="100%">
+
 # Injektor
 
 **Controlled prompt-injection and jailbreak checks for LLM applications, from your terminal.**
@@ -18,13 +20,16 @@ Send a fixed, reviewable suite of adversarial prompts to an OpenAI-compatible en
 > [!WARNING]
 > **Only assess systems you own or are explicitly authorized to test.** Outcomes are heuristic indicators, not proof of security or insecurity. Injektor does not discover targets, scan networks, run requests in parallel, or try to evade detection.
 
-![Example Injektor HTML report: ten confirmed findings against the intentionally vulnerable demo server](docs/images/report-example.png)
+<p align="center">
+  <img src="docs/images/demo.gif" alt="Animated terminal: injektor scan sends ten test cases to the demo server and reports ten confirmed outcomes" width="100%">
+</p>
 
-<sub>The HTML report from a scan of the bundled, intentionally vulnerable demo server.</sub>
+<p align="center"><sub>A scan of the bundled, intentionally vulnerable demo server. Output is unedited; only the typing is animated.</sub></p>
 
 ## Contents
 
 - [Highlights](#highlights)
+- [Screenshots](#screenshots)
 - [How it works](#how-it-works)
 - [Quick start](#quick-start)
 - [Built-in test suite](#built-in-test-suite)
@@ -49,6 +54,31 @@ Send a fixed, reviewable suite of adversarial prompts to an OpenAI-compatible en
 - **Careful with your data:** reports never contain the API key or request headers, store a fingerprint instead of the full answer, and `--no-excerpts` drops answer excerpts entirely.
 - **CI-friendly:** distinct exit statuses for findings, usage errors and operational errors.
 - **Offline demo:** a loopback-only scripted server shows every outcome without an API key.
+
+## Screenshots
+
+All screenshots come from real scans of the bundled demo server (`injektor demo`).
+
+**HTML report: vulnerable mode.** Summary cards and one row per case with its evidence.
+
+![HTML report with ten confirmed findings against the demo server in vulnerable mode](docs/images/report-example.png)
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <b>Case details.</b> Evidence, excerpt, remediation, the prompt that was sent and a fingerprint of the answer.<br><br>
+      <img src="docs/images/report-case-detail.png" alt="Expanded case details for indirect-tool-output in the HTML report">
+    </td>
+    <td width="50%" valign="top">
+      <b>HTML report: safe mode.</b> Nothing matched, so every case is <code>inconclusive</code>, which is not a pass.<br><br>
+      <img src="docs/images/report-safe.png" alt="HTML report with ten inconclusive outcomes against the demo server in safe mode">
+    </td>
+  </tr>
+</table>
+
+**Terminal summary.** `injektor report <report.json> --format text` (first three of ten cases shown).
+
+![Text summary of a saved report with evidence, excerpts and remediation for each case](docs/images/terminal-report-text.png)
 
 ## How it works
 
