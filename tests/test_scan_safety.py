@@ -318,7 +318,8 @@ def test_isolated_errors_do_not_stop_the_scan(tmp_path, run_scan):
     result, requests = run_scan(handler, "--output", str(tmp_path))
     assert result.exit_code == 3, result.output
     assert len(requests) == N
-    assert load(tmp_path)["statistics"]["outcomes"]["error"] == N // 2
+    # Requests are numbered from 1, so the odd-numbered half (rounded up) fails.
+    assert load(tmp_path)["statistics"]["outcomes"]["error"] == (N + 1) // 2
 
 
 @pytest.mark.parametrize("handler", [
