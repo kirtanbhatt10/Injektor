@@ -10,7 +10,7 @@ CASE = ("- id: a\n  category: c\n  description: d\n  test_input: t\n"
 
 
 def test_cases_load():
-    assert len(load_cases(DEFAULT_CASES)) == 10
+    assert len(load_cases(DEFAULT_CASES)) == 11
 
 
 def test_cases_reject_invalid_yaml(tmp_path):
