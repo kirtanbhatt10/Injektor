@@ -158,4 +158,4 @@ def test_valid_yaml_still_loads_and_the_loader_stays_safe():
 
 
 def test_built_in_suite_has_no_duplicate_keys():
-    assert len(load_cases(config.Path(config.__file__).parent / "cases" / "default.yaml")) == 10
+    assert len(load_cases(config.Path(config.__file__).parent / "cases" / "default.yaml")) == 11
