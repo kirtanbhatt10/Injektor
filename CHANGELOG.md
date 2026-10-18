@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Detection
+
+- Refusal wording is recognised in Spanish, French, German and Hindi (Devanagari and romanised) as well as English. A marker next to such a refusal is now `potential` instead of `confirmed`, and an indicator match inside one is no longer counted ([#5](https://github.com/kirtanbhatt10/Injektor/issues/5)).
+
 ## 0.1.0 - 2026-10-13
 
 First tagged release.
