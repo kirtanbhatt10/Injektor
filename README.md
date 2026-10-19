@@ -116,6 +116,24 @@ To only use the tool, without the development dependencies, you can install it s
 pip install "git+https://github.com/kirtanbhatt10/Injektor.git"
 ```
 
+### Run with Docker
+
+To scan without installing Python, build the image from a clone and pass the configuration in from your shell:
+
+```bash
+docker build -t injektor .
+mkdir -p reports
+docker run --rm --user "$(id -u):$(id -g)" \
+  -e INJEKTOR_ENDPOINT -e INJEKTOR_MODEL -e INJEKTOR_API_KEY \
+  -v "$PWD/reports:/work/reports" \
+  injektor scan --output reports/docker
+```
+
+- `-e NAME` without a value copies that variable from your shell, so the API key is never written into the image or the command line.
+- The container works in `/work`, so reports land in the mounted `reports` folder; `--user` makes the files yours instead of the image's non-root `injektor` user.
+- Inside the container `127.0.0.1` is the container itself. To scan a server running on your machine, use `http://host.docker.internal:<port>/...` (on Linux, also pass `--add-host=host.docker.internal:host-gateway`).
+- The demo server binds to loopback only, so it is not reachable from outside its container; run it from a local install as described below.
+
 ### Run the local demo (no API key)
 
 The demo is intentionally vulnerable by default. It uses only a synthetic canary and binds only to loopback. Never expose it to a network.

@@ -10,6 +10,10 @@
 
 - Refusal wording is recognised in Spanish, French, German and Hindi (Devanagari and romanised) as well as English. A marker next to such a refusal is now `potential` instead of `confirmed`, and an indicator match inside one is no longer counted ([#5](https://github.com/kirtanbhatt10/Injektor/issues/5)).
 
+### Packaging
+
+- A `Dockerfile` builds a slim image that runs Injektor as a non-root user, so a scan needs only Docker. The build context is limited by `.dockerignore` to the package sources, so local reports and `.env` files never enter the image. See [Run with Docker](README.md#run-with-docker).
+
 ## 0.1.0 - 2026-10-13
 
 First tagged release.
