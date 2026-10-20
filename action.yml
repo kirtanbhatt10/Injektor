@@ -1,0 +1,90 @@
+name: Injektor LLM security scan
+description: Run Injektor's prompt-injection and jailbreak checks against an LLM endpoint you are authorized to test, and publish the results to the job summary and a JUnit file.
+author: Kirtan Bhatt
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  endpoint:
+    description: Full URL of the OpenAI-compatible chat completions endpoint.
+    required: true
+  model:
+    description: Model name sent in the request body.
+    required: true
+  api-key:
+    description: Optional API key, sent as a Bearer token. Pass it from a secret.
+    required: false
+    default: ""
+  cases:
+    description: Optional custom case file. The built-in suite is used when empty.
+    required: false
+    default: ""
+  output-dir:
+    description: Directory for report.json, report.html and junit.xml.
+    required: false
+    default: injektor-report
+  keep-excerpts:
+    description: Store response excerpts in the report. Off by default because excerpts can hold real content from the target's hidden context.
+    required: false
+    default: "false"
+  timeout:
+    description: Seconds per request (0.1 to 120).
+    required: false
+    default: "15"
+  retries:
+    description: Extra attempts per case for transient failures (0 to 3).
+    required: false
+    default: "1"
+  delay:
+    description: Seconds to wait between cases (0 to 60).
+    required: false
+    default: "0"
+
+outputs:
+  exit-code:
+    description: "Scan exit status: 0 no confirmed finding, 1 confirmed finding, 2 invalid configuration, 3 operational error."
+    value: ${{ steps.scan.outputs.exit-code }}
+  report-dir:
+    description: Directory holding the reports.
+    value: ${{ steps.scan.outputs.report-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Injektor
+      shell: bash
+      run: python3 -m pip install --quiet --disable-pip-version-check "$GITHUB_ACTION_PATH"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      # Every input reaches the shell through an environment variable, never through ${{ }}
+      # inside the script, so input values cannot become shell code.
+      env:
+        INJEKTOR_ENDPOINT: ${{ inputs.endpoint }}
+        INJEKTOR_MODEL: ${{ inputs.model }}
+        INJEKTOR_API_KEY: ${{ inputs.api-key }}
+        INJEKTOR_TIMEOUT: ${{ inputs.timeout }}
+        INJEKTOR_RETRIES: ${{ inputs.retries }}
+        INJEKTOR_DELAY: ${{ inputs.delay }}
+        IN_CASES: ${{ inputs.cases }}
+        IN_OUTPUT: ${{ inputs.output-dir }}
+        IN_KEEP_EXCERPTS: ${{ inputs.keep-excerpts }}
+      run: |
+        if [ -z "$INJEKTOR_API_KEY" ]; then unset INJEKTOR_API_KEY; fi
+        args=(--output "$IN_OUTPUT" --overwrite)
+        if [ -n "$IN_CASES" ]; then args+=(--cases "$IN_CASES"); fi
+        if [ "$IN_KEEP_EXCERPTS" != "true" ]; then args+=(--no-excerpts); fi
+        set +e
+        injektor scan "${args[@]}"
+        status=$?
+        set -e
+        if [ -f "$IN_OUTPUT/report.json" ]; then
+          injektor report "$IN_OUTPUT/report.json" --format markdown --output "$IN_OUTPUT/summary.md"
+          cat "$IN_OUTPUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          injektor report "$IN_OUTPUT/report.json" --format junit --output "$IN_OUTPUT/junit.xml"
+        fi
+        echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+        echo "report-dir=$IN_OUTPUT" >> "$GITHUB_OUTPUT"
+        exit "$status"

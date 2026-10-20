@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 
 from . import __version__
+from .ci_formats import to_junit, to_markdown
 from .config import AttackCase, TargetConfig, load_case_file, load_cases
 from .detection import detect, score
 from .reporting import build_provenance, existing_reports, redact_endpoint, write_report
@@ -252,11 +253,16 @@ def _text_summary(data: dict) -> str:
 @app.command()
 def report(path: Path = typer.Argument(..., exists=True, readable=True),
            output_format: str = typer.Option("json", "--format",
-                                             help="json (machine-readable summary) or text "
-                                                  "(per-case outcomes and evidence)")):
-    """View a previously generated JSON report summary."""
-    if output_format not in {"json", "text"}:
-        raise typer.BadParameter("--format must be json or text")
+                                             help="json (machine-readable summary), text "
+                                             "(per-case outcomes and evidence), markdown "
+                                             "(summary for a CI job page) or junit (XML test "
+                                             "report for CI)"),
+           output: Path = typer.Option(None, "--output", "-o",
+                                       help="Write to this file (UTF-8) instead of standard "
+                                       "output")):
+    """View a previously generated JSON report, or convert it for CI."""
+    if output_format not in {"json", "text", "markdown", "junit"}:
+        raise typer.BadParameter("--format must be json, text, markdown or junit")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, RecursionError) as exc:
@@ -264,10 +270,26 @@ def report(path: Path = typer.Argument(..., exists=True, readable=True),
     if not isinstance(data, dict) or not isinstance(data.get("statistics"), dict):
         raise typer.BadParameter("Not an Injektor report: missing 'statistics' object.")
     if output_format == "text":
-        typer.echo(_text_summary(data))
+        content = _text_summary(data) + "\n"
+    elif output_format == "markdown":
+        content = to_markdown(data)
+    elif output_format == "junit":
+        content = to_junit(data)
+    else:
+        summary = {key: data[key] for key in ("generated_at", "provenance", "statistics")
+                   if key in data}
+        content = json.dumps(summary, indent=2) + "\n"
+    if output is not None:
+        try:
+            output.write_text(content, encoding="utf-8", errors="backslashreplace")
+        except OSError as exc:
+            raise typer.BadParameter(f"Could not write {output}: {exc.strerror or exc}") from exc
+        typer.echo(f"Wrote {output}", err=True)
         return
-    summary = {key: data[key] for key in ("generated_at", "provenance", "statistics") if key in data}
-    typer.echo(json.dumps(summary, indent=2))
+    # Standard output may be a legacy Windows code page, so it stays ASCII. In XML a
+    # character reference keeps the document valid; elsewhere a backslash escape is shown.
+    errors = "xmlcharrefreplace" if output_format == "junit" else "backslashreplace"
+    typer.echo(content.encode("ascii", errors).decode("ascii"), nl=False)
 
 
 @app.command()

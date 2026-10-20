@@ -40,6 +40,7 @@ Send a fixed, reviewable suite of adversarial prompts to an OpenAI-compatible en
 - [Scan exit status](#scan-exit-status)
 - [Reports](#reports)
 - [Custom case files](#custom-case-files)
+- [Continuous integration](#continuous-integration)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
 - [Development](#development)
@@ -212,7 +213,7 @@ The suite lives in [`injektor/cases/default.yaml`](injektor/cases/default.yaml);
 injektor --version
 injektor list [--cases PATH]
 injektor scan [--cases PATH] [--output DIR] [--overwrite] [--no-excerpts]
-injektor report PATH [--format json|text]
+injektor report PATH [--format json|text|markdown|junit] [--output FILE]
 injektor demo [--mode vulnerable|safe] [--host 127.0.0.1] [--port 8765]
 ```
 
@@ -220,10 +221,10 @@ injektor demo [--mode vulnerable|safe] [--host 127.0.0.1] [--port 8765]
 |---|---|
 | `list` | List the test cases: the built-in suite, or the file given with `--cases`. |
 | `scan` | Run the cases against the configured target and write `report.json` and `report.html` to `--output` (default `reports`). |
-| `report` | Print the summary of a saved `report.json`. |
+| `report` | Print the summary of a saved `report.json`, or convert it to Markdown or JUnit XML for CI. |
 | `demo` | Start the loopback-only demo endpoint (`vulnerable` by default). |
 
-`report` prints the summary of a saved `report.json`. The default `json` format prints the generation time, provenance and statistics; `text` adds one block per case with its evidence. Text output is restricted to printable ASCII, so content from a target cannot send control sequences to your terminal.
+`report` prints the summary of a saved `report.json`. The default `json` format prints the generation time, provenance and statistics; `text` adds one block per case with its evidence. Text output is restricted to printable ASCII, so content from a target cannot send control sequences to your terminal. `markdown` and `junit` are for CI; see [Continuous integration](#continuous-integration). `--output FILE` writes UTF-8 to a file instead of standard output.
 
 ## Configuration
 
@@ -396,6 +397,68 @@ These are time limits, not memory limits. Until it is killed, the child may use 
 
 Review case files from other people before using them all the same. The time bound does not make an untrusted file safe: its prompts are sent to your target as written, and its canaries and indicators decide what is reported.
 
+## Continuous integration
+
+Injektor can run in a pipeline against a staging deployment you are authorized to test, and
+report back in the formats CI systems already understand.
+
+### Report formats for CI
+
+```bash
+injektor report reports/ci/report.json --format markdown --output summary.md
+injektor report reports/ci/report.json --format junit --output junit.xml
+```
+
+| Format | Contains | Leaves out |
+|---|---|---|
+| `markdown` | Outcome counts and one table row per case (outcome, severity, case, category), worst first. Every value is escaped, so report content cannot add links, images or HTML. | Evidence, excerpts and prompts. The summary is meant for pages many people can read, and evidence lines name planted canaries. |
+| `junit` | One test case per Injektor case. `confirmed` is a failure, `error` is an error, `potential` and `inconclusive` are skipped with the reason. No case is reported as passed, because nothing matching is not a pass. Evidence and remediation go in the failure text. | Excerpts and prompts. Treat the file like `report.json`. |
+
+### GitHub Action
+
+The repository is also a composite action. It installs Injektor, runs a scan, appends the
+Markdown summary to the job page and writes `junit.xml` next to the reports. The step's exit
+status is the scan's exit status.
+
+```yaml
+name: llm-security
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  injektor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: kirtanbhatt10/Injektor@main  # pin to a commit SHA in real use
+        with:
+          endpoint: https://staging-llm.example.com/v1/chat/completions
+          model: your-model-name
+          api-key: ${{ secrets.STAGING_LLM_KEY }}
+          cases: security/injektor-cases.yaml  # optional; built-in suite when omitted
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: injektor-report
+          path: injektor-report/
+```
+
+Inputs: `endpoint`, `model`, `api-key`, `cases`, `output-dir` (default `injektor-report`),
+`keep-excerpts` (default `false`), `timeout`, `retries`, `delay`. Outputs: `exit-code`,
+`report-dir`. Excerpts are off by default in the action because uploaded artifacts are often
+readable by everyone with access to the repository. Every input reaches the shell through an
+environment variable, never through `${{ }}` inside the script.
+
+Do not point the action at a production endpoint you do not own, and do not run it on
+`pull_request_target` or other triggers where untrusted code can read your API key.
+
 ## Architecture
 
 ```text
@@ -406,6 +469,7 @@ injektor/
   detection.py   detect(case, answer) -> outcome, evidence, excerpts; score(results)
   regexguard.py  Runs indicator regexes in a child interpreter with a time budget
   reporting.py   Provenance, JSON document, HTML rendering, paired atomic writes
+  ci_formats.py  Markdown job summary and JUnit XML views of a saved report
   demo.py        Loopback-only scripted server for the local demo
   cases/default.yaml   Built-in suite
 ```
